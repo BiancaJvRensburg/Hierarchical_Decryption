@@ -896,8 +896,6 @@ vector<bool> padBlock(vector<bool> b, int desiredSize) {
 // Return a flux of non-padded blocks
 vector<vector<bool>> createBlockStreams(const vector<vector<bool>>& blocks, const vector<int>& mask, const vector<int>& lastMask, const int nbKeys, const int keySize) {
 	vector<vector<bool>> divBlock(nbKeys + 1);
-
-	cout << "block size vs mask size: " << blocks[0].size() << " " << mask.size() << std::endl;
 	
 	for (int i = 0; i < blocks.size() - 1; i++) {   // For each block (except the smaller, last block)
 		vector<vector<bool>> decomp = divideBlock(blocks[i], mask, nbKeys);     // decompose the block
@@ -1350,11 +1348,21 @@ int main()
 	vector<string> possibleKeys;
 	vector<string> possibleIV;
 
+	/*********PARAMETERS************/
+	int bpb = 3;		// Bits per block (alpha in the paper). Recommended value: 2 or 3 according to desired use.
+
+	string rootFile = "C:\\Users\\Bianca\\Documents\\";
+	string baseRoot = "Meshes\\Stanford\\";
+
 	const char* keyFile = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\_Key_List.txt";
 	const char* ivFile = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\_IV_List.txt";
 
+	vector<string> meshes = { "bunny", "casting", "cow", "crank", "dragon", "horse", "hand", "rabbit", "venus", "Ramesses" };
+	/******************************/
+
 	char line[256];
 
+	// Read the list of possible keys (key randomly chosen)
 	FILE* fkey = fopen(keyFile, "r");
 	while (fgets(line, sizeof(line), fkey)) {
 		string s = "";
@@ -1362,6 +1370,7 @@ int main()
 		possibleKeys.push_back(s);
 	}
 
+	// Read the list of possible IV (IV randomly chosen)
 	FILE* fiv = fopen(ivFile, "r");
 	while (fgets(line, sizeof(line), fiv)) {
 		string s = "";
@@ -1371,134 +1380,83 @@ int main()
 
 	srand(0);
 
-	// vector<string> meshes = { "bunny", "casting", "cow", "crank", "dragon", "horse", "hand", "rabbit", "venus", "Ramesses" };
 	const vector<vector<int>> startingIndexes{ {20, 21, 22}, { 17, 19, 21 }, { 14, 17, 20 }, {11, 15, 19}, {8, 13, 18} };
 
-	for (int meshNb = 206; meshNb <= 400; meshNb++) {
-		if (meshNb == 261) meshNb = 281;
-		for (int bpb = 1; bpb <= 5; bpb++) {
-			/*******Parametres*********/
-			bool isEncrypt = true;
-			const int bitSize = 3 * bpb;		// The number of bits per coordinate to encrypt
-			const int bsize = 128 / bitSize;			// The block size
-			vector<int> indexes = startingIndexes[bpb - 1]; // The starting indexes of each security level
-			// int accessLevel = 0;			// The visual security level
-			/*************************/
+	for (int meshNb = 0; meshNb < meshes.size(); meshNb++) {
+		const int bitSize = 3 * bpb;		// The number of bits per coordinate to encrypt
+		const int bsize = 128 / bitSize;			// The block size
+		vector<int> indexes = startingIndexes[bpb - 1]; // The starting indexes of each security level
 
-			int index = rand() % 100;
+		int index = rand() % 100;
 
-			/*char nom_Cle0[250] = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\key256.txt";
-			char nom_IV0[250] = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\iv128.txt"; */
-			/*char nom_Cle1[250] = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\keyTrans.txt";
-			char nom_IV1[250] = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\ivTrans.txt";
-			char nom_Cle2[250] = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\keySuff.txt";
-			char nom_IV2[250] = "C:\\Users\\Bianca\\Documents\\Hierarchical_Decryption\\Keys\\ivSuff.txt";*/
+		// Read mesh file
+		Eigen::MatrixXd V;
+		Eigen::MatrixXi F;
 
-			// Read file
-			Eigen::MatrixXd V;
-			Eigen::MatrixXi F;
+		string filename = rootFile + baseRoot + meshes[meshNb] + ".off";
+		string outputName = rootFile + "Hierarchical_Decryption\\Test\\" + meshes[meshNb] + "_" + to_string(bpb) + "_enc.off";
 
-			string rootFile = "C:\\Users\\Bianca\\Documents\\";
-			string baseRoot = "Meshes\\Princeton\\";
-			string filename = rootFile + baseRoot + to_string(meshNb) + ".off";
-			string outputName = rootFile + "Hierarchical_Decryption\\Results\\Princeton\\_256_" + to_string(meshNb) + "_" + to_string(bpb) + "_enc.off";
+		igl::readOFF(filename, V, F);
 
-			if (isEncrypt) igl::readOFF(filename, V, F);
-			else igl::readOFF(outputName, V, F);
+		OCTET* oCle; OCTET* oIV;
+		allocation_tableau(oCle, OCTET, 65);
+		allocation_tableau(oIV, OCTET, 33);
 
-			OCTET* oCle; OCTET* oIV;
-			allocation_tableau(oCle, OCTET, 65);
-			allocation_tableau(oIV, OCTET, 33);
+		for (int i = 0; i < 64; i++) {
+			oCle[i] = possibleKeys[index][i];
+		}
 
-			cout << possibleKeys.size() << std::endl;
-			cout << index << endl;
-			for (int i = 0; i < 64; i++) {
-				oCle[i] = possibleKeys[index][i];
-			}
+		for (int i = 0; i < 32; i++) {
+			oIV[i] = possibleIV[index][i];
+		}
 
-			for (int i = 0; i < 32; i++) {
-				oIV[i] = possibleIV[index][i];
-			}
+		OCTET** keyList = new OCTET * [3];
+		OCTET** ivList = new OCTET * [3];
+		for (int i = 0; i < 3; i++) {
+			keyList[i] = new OCTET[64];
+			ivList[i] = new OCTET[33];
+		}
 
-			OCTET** keyList = new OCTET * [3];
-			OCTET** ivList = new OCTET * [3];
-			for (int i = 0; i < 3; i++) {
-				keyList[i] = new OCTET[64];
-				ivList[i] = new OCTET[33];
-			}
+		Type_mode = '3';
 
-			Type_mode = '3';
-
-			vector<vector<bool>> blocks = generateBlocks(bsize, &V);
-			vector<int> mask = generateMask(&indexes, bsize);
-			int lastBlockSize = V.rows() % bsize;
-			vector<int> lastMask = generateMask(&indexes, lastBlockSize);
+		vector<vector<bool>> blocks = generateBlocks(bsize, &V);
+		vector<int> mask = generateMask(&indexes, bsize);
+		int lastBlockSize = V.rows() % bsize;
+		vector<int> lastMask = generateMask(&indexes, lastBlockSize);
 
 
-			std::cout << "\nGenerating blocks...." << meshNb << endl;
-			vector<vector<bool>> decomp = createBlockStreams(blocks, mask, lastMask, indexes.size(), 256);		// Single streams of blocks divided according to their access level
+		std::cout << "\nGenerating blocks...." << meshNb << endl;
+		vector<vector<bool>> decomp = createBlockStreams(blocks, mask, lastMask, indexes.size(), 256);		// Single streams of blocks divided according to their access level
 
-			// Encryption
-			if (isEncrypt) {
-				// readKeyIV(oCle, nom_Cle0, oIV, nom_IV0);
-				encryptStreamsV2(decomp, oCle, oIV, bsize, bitSize, 256, keyList, ivList);
+		// Encryption
+		encryptStreamsV2(decomp, oCle, oIV, bsize, bitSize, 256, keyList, ivList);
 
-				std::cout << "Replacing the coordinates...." << endl;
-				replaceMantissaWithStream(V, decomp, mask, lastMask, bsize, bitSize);
-				igl::writeOFF(outputName, V, F);
-			}
+		std::cout << "Replacing the coordinates...." << endl;
+		replaceMantissaWithStream(V, decomp, mask, lastMask, bsize, bitSize);
+		igl::writeOFF(outputName, V, F);
 
-
-			// Decryption
-			/*if (accessLevel == 0) readKeyIV(oCle, nom_Cle0, oIV, nom_IV0);
-			else if (accessLevel == 1) readKeyIV(oCle, nom_Cle1, oIV, nom_IV1);
-			else if (accessLevel == 2) readKeyIV(oCle, nom_Cle2, oIV, nom_IV2);*/
-
-			for (int accessLevel = 0; accessLevel < 3; accessLevel++) {
-				vector<vector<bool>> decompCP;
-				for (int i = 0; i < decomp.size(); i++) {
-					vector<bool> dec;
-					for (int j = 0; j < decomp[i].size(); j++) {
-						dec.push_back(decomp[i][j]);
-					}
-					decompCP.push_back(dec);
+		// Decryption
+		for (int accessLevel = 0; accessLevel < 3; accessLevel++) {
+			vector<vector<bool>> decompCP;
+			for (int i = 0; i < decomp.size(); i++) {
+				vector<bool> dec;
+				for (int j = 0; j < decomp[i].size(); j++) {
+					dec.push_back(decomp[i][j]);
 				}
-
-				std::cout << "\nDecrypting " << accessLevel << endl;
-				decryptStreamsV2(accessLevel, decompCP, oCle, oIV, bsize, bitSize, 256, keyList, ivList);
-
-				std::cout << "Replacing the coordinates...." << endl;
-				replaceMantissaWithStream(V, decompCP, mask, lastMask, bsize, bitSize);
-
-				string outputName2 = rootFile + "Hierarchical_Decryption\\Results\\Princeton\\_256_" + to_string(meshNb) + "_" + to_string(bpb) + "_" + to_string(accessLevel) + ".off";
-				igl::writeOFF(outputName2, V, F);
+				decompCP.push_back(dec);
 			}
+
+			std::cout << "\nDecrypting " << accessLevel << endl;
+			decryptStreamsV2(accessLevel, decompCP, oCle, oIV, bsize, bitSize, 256, keyList, ivList);
+
+			std::cout << "Replacing the coordinates...." << endl;
+			replaceMantissaWithStream(V, decompCP, mask, lastMask, bsize, bitSize);
+
+			string outputName2 = rootFile + "Hierarchical_Decryption\\Test\\" + meshes[meshNb] + "_" + to_string(bpb) + "_" + to_string(accessLevel) + ".off";
+			igl::writeOFF(outputName2, V, F);
 		}
 
 	}
-
-	// HAUSDORFF DISTANCE MEASUREMENTS
-	/*for (int meshNb = meshes.size() - 1; meshNb < meshes.size(); meshNb++) {
-		Eigen::MatrixXd V, Voriginal;
-		Eigen::MatrixXi F, Foriginal;
-
-		string rootFile = "C:\\Users\\Bianca\\Documents\\";
-		string baseRoot = "Meshes\\Stanford\\";
-		string filename = rootFile + baseRoot + meshes[meshNb] + ".off";
-
-		igl::readOFF(filename, Voriginal, Foriginal);
-
-		for (int config = 1; config > 0; config--) {
-			for (int accessLevel = 2; accessLevel < 3; accessLevel++) {
-				string outputName = rootFile + "Hierarchical_Decryption\\MeshTest\\Collective_" + to_string(config) + "\\" + meshes[meshNb] + "_" + to_string(config) + "_" + to_string(accessLevel) + ".off";
-				igl::readOFF(outputName, V, F);
-
-				double hd;
-				igl::hausdorff(V, F, Voriginal, Foriginal, hd);
-				cout << meshes[meshNb] << " (" << config << accessLevel << "): " << hd << " " << endl;
-			}
-		}
-	}*/
 
 	return 0;
 }
